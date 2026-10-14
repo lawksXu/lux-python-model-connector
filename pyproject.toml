@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=84.0.0,<85.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lux-python-model-connector"
+version = "0.1.0"
+description = "Model provider connector service for Lux"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "aiokafka==0.14.0",
+    "boto3==1.43.112",
+    "httpx==0.28.1",
+    "fastapi==0.141.1",
+    "pydantic==2.13.5",
+    "pymysql[rsa]==1.1.2",
+    "uvicorn==0.53.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.16.8",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+lux_model_connector = ["schema.sql", "schema_v1.sql"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+extend-exclude = ["build", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
