@@ -117,7 +117,10 @@ def test_exact_routes_and_version_specific_translation():
             _, adapter = registry.resolve(request)
             translated = await adapter.translate(request, ())
             assert translated["size"] == "2048x2048"
-            assert translated["output_format"] == "jpeg"
+            if model == "seedream-4.5":
+                assert "output_format" not in translated
+            else:
+                assert translated["output_format"] == "jpeg"
             assert translated["stream"] is False
             if model.endswith("pro"):
                 assert translated["layer_decomposition"] is False
@@ -128,6 +131,60 @@ def test_exact_routes_and_version_specific_translation():
         request = decode_generation_request(image_plan("seedream-4.5"), "IMAGE")
         with pytest.raises(ValueError, match="format"):
             await registry.resolve(request)[1].translate(request, ())
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    ("model", "format"),
+    [
+        ("seedream-4.5", "JPEG"),
+        ("seedream-5.0-lite", "PNG"),
+        ("seedream-5.0-lite", "JPEG"),
+        ("seedream-5.0-pro", "PNG"),
+        ("seedream-5.0-pro", "JPEG"),
+    ],
+)
+def test_image_format_option_matches_model_after_prepared_payload_roundtrip(
+    model, format
+):
+    from lux_model_connector.byteplus import BytePlusClient, BytePlusSettings
+    from lux_model_connector.byteplus_adapters import byteplus_registry
+    from lux_model_connector.generation_plan import NormalizedPreparedSubmission
+
+    async def run():
+        posts = []
+
+        def respond(request):
+            posts.append(json.loads(request.content))
+            return httpx.Response(
+                200, json={"data": [{"url": "https://provider.example/image"}]}
+            )
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+            client = BytePlusClient(BytePlusSettings(api_key="fixture"), http)
+            request = decode_generation_request(image_plan(model, format), "IMAGE")
+            route, adapter = byteplus_registry(client, ResultsDouble()).resolve(request)
+            prepared = NormalizedPreparedSubmission(
+                account_ref=route.account_ref,
+                kind="IMAGE",
+                binding=route.binding,
+                request=request,
+                provider_payload=await adapter.translate(request, ()),
+            )
+            restored = NormalizedPreparedSubmission.model_validate_json(
+                prepared.model_dump_json()
+            )
+            await adapter.submit(
+                initial_work().execution.input_generation_payload.identity, restored
+            )
+            assert restored.request.parameters.output_format == format
+            assert len(posts) == 1
+            assert posts[0]["model"] == request.provider_binding.provider_model_id
+            if model == "seedream-4.5":
+                assert "output_format" not in posts[0]
+            else:
+                assert posts[0]["output_format"] == format.lower()
 
     asyncio.run(run())
 
@@ -246,6 +303,11 @@ def test_retained_byte_verification_rejects_dimensions_and_checksum():
             await adapter.verify_result(
                 request, result.model_copy(update={"sha256": "0" * 64})
             )
+        jpeg_request = decode_generation_request(
+            image_plan("seedream-4.5", "JPEG"), "IMAGE"
+        )
+        with pytest.raises(ValueError, match="format"):
+            await adapter.verify_result(jpeg_request, result)
 
     asyncio.run(run())
 

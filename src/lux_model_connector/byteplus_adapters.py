@@ -201,10 +201,11 @@ class BytePlusAdapter:
                 "model_id": request.provider_binding.provider_model_id,
                 "prompt": request.parameters.prompt,
                 "size": f"{dimensions.width}x{dimensions.height}",
-                "output_format": request.parameters.output_format.lower(),
                 "response_format": "url",
                 "stream": False,
             }
+            if model != "seedream-4.5":
+                options["output_format"] = request.parameters.output_format.lower()
             if urls:
                 options["image"] = list(urls)
             if model == "seedream-5.0-pro":
